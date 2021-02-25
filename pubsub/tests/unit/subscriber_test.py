@@ -478,7 +478,7 @@ else:
         assert queue.qsize() == 0
 
     @pytest.mark.asyncio
-    async def test_consumer_gracefull_shutdown(
+    async def test_consumer_graceful_shutdown(
         ack_deadline_cache, message
     ):
         queue = asyncio.Queue()
@@ -517,7 +517,7 @@ else:
         assert consumer_task.done()
 
     @pytest.mark.asyncio
-    async def test_consumer_gracefull_shutdown_without_pending_tasks(
+    async def test_consumer_graceful_shutdown_without_pending_tasks(
         ack_deadline_cache
     ):
         queue = asyncio.Queue()
