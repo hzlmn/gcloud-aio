@@ -869,6 +869,35 @@ else:
                 logging.WARNING,
                 'Nack failed for ack_id=ack_id_2') in caplog.record_tuples
 
+
+    @pytest.mark.asyncio
+    async def test_nacker_graceful_shutdown(subscriber_client):
+
+        mock = MagicMock()
+
+        async def f(*args, **kwargs):
+            mock(*args, **kwargs)
+
+        subscriber_client.modify_ack_deadline = f
+        queue = asyncio.Queue()
+        nacker_task = asyncio.ensure_future(
+            nacker(
+                'fake_subscription',
+                queue,
+                subscriber_client,
+                0.1,
+                MagicMock()
+            )
+        )
+        await asyncio.sleep(0)
+        await queue.put('ack_id_1')
+        nacker_task.cancel()
+        await asyncio.wait_for(queue.join(), 1.)
+        await asyncio.sleep(0.3)
+        mock.assert_called_with('fake_subscription', ack_ids=['ack_id_1'],
+                                ack_deadline_seconds=0)
+        assert nacker_task.done()
+
     # =========
     # subscribe
     # =========
