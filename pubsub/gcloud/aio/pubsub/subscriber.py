@@ -147,8 +147,12 @@ else:
                      subscriber_client: 'SubscriberClient',
                      nack_window: float,
                      metrics_client: MetricsAgent) -> None:
+
         ack_ids: List[str] = []
-        while True:
+
+        async def _nack_once() -> None:
+            nonlocal ack_ids
+
             if not ack_ids:
                 ack_ids.append(await nack_queue.get())
                 nack_queue.task_done()
@@ -167,8 +171,6 @@ else:
                     subscription,
                     ack_ids=ack_ids,
                     ack_deadline_seconds=0)
-            except asyncio.CancelledError:  # pylint: disable=try-except-raise
-                raise
             except aiohttp.client_exceptions.ClientResponseError as e:
                 if e.status == 400:
                     log.error(
@@ -192,18 +194,24 @@ else:
                 log.warning(
                     'Nack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.nacker.batch.failed')
-
-                continue
+            except asyncio.CancelledError:  # pylint: disable=try-except-raise
+                raise
             except Exception as e:
                 log.warning(
                     'Nack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.nacker.batch.failed')
+            else:
+                metrics_client.histogram('pubsub.nacker.batch', len(ack_ids))
+                ack_ids = []
 
-                continue
+        while True:
+            try:
+                await _nack_once()
+            except asyncio.CancelledError:
+                while ack_ids or nack_queue.qsize():
+                    await _nack_once()
+                break
 
-            metrics_client.histogram('pubsub.nacker.batch', len(ack_ids))
-
-            ack_ids = []
 
     async def _execute_callback(message: SubscriberMessage,
                                 callback: ApplicationHandler,
