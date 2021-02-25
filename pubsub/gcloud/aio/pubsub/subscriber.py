@@ -123,7 +123,7 @@ else:
                 log.warning(
                     'Ack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.acker.batch.failed')
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # pylint: disable=try-except-raise
                 raise
             except Exception as e:
                 log.warning(
@@ -140,7 +140,6 @@ else:
                 while ack_ids or ack_queue.qsize():
                     await _ack_once()
                 break
-
 
     async def nacker(subscription: str,
                      nack_queue: 'asyncio.Queue[str]',
@@ -211,7 +210,6 @@ else:
                 while ack_ids or nack_queue.qsize():
                     await _nack_once()
                 break
-
 
     async def _execute_callback(message: SubscriberMessage,
                                 callback: ApplicationHandler,

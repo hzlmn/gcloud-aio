@@ -686,7 +686,6 @@ else:
                 logging.WARNING,
                 'Ack failed for ack_id=ack_id_2') in caplog.record_tuples
 
-
     @pytest.mark.asyncio
     async def test_acker_graceful_shutdown(subscriber_client):
 
@@ -713,7 +712,6 @@ else:
         await asyncio.sleep(0.3)
         mock.assert_called_with('fake_subscription', ack_ids=['ack_id_1'])
         assert acker_task.done()
-
 
     # ========
     # nacker
@@ -868,7 +866,6 @@ else:
         assert ('gcloud.aio.pubsub.subscriber',
                 logging.WARNING,
                 'Nack failed for ack_id=ack_id_2') in caplog.record_tuples
-
 
     @pytest.mark.asyncio
     async def test_nacker_graceful_shutdown(subscriber_client):
