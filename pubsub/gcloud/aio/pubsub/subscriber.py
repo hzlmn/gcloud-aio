@@ -78,8 +78,12 @@ else:
                     subscriber_client: 'SubscriberClient',
                     ack_window: float,
                     metrics_client: MetricsAgent) -> None:
+
         ack_ids: List[str] = []
-        while True:
+
+        async def _ack_once() -> None:
+            nonlocal ack_ids
+
             if not ack_ids:
                 ack_ids.append(await ack_queue.get())
                 ack_queue.task_done()
@@ -119,18 +123,24 @@ else:
                 log.warning(
                     'Ack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.acker.batch.failed')
-
-                continue
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 log.warning(
                     'Ack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.acker.batch.failed')
+            else:
+                metrics_client.histogram('pubsub.acker.batch', len(ack_ids))
+                ack_ids = []
 
-                continue
+        while True:
+            try:
+                await _ack_once()
+            except asyncio.CancelledError:
+                while ack_ids or ack_queue.qsize():
+                    await _ack_once()
+                break
 
-            metrics_client.histogram('pubsub.acker.batch', len(ack_ids))
-
-            ack_ids = []
 
     async def nacker(subscription: str,
                      nack_queue: 'asyncio.Queue[str]',
