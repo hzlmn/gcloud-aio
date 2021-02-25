@@ -686,6 +686,35 @@ else:
                 logging.WARNING,
                 'Ack failed for ack_id=ack_id_2') in caplog.record_tuples
 
+
+    @pytest.mark.asyncio
+    async def test_acker_graceful_shutdown(subscriber_client):
+
+        mock = MagicMock()
+
+        async def f(*args, **kwargs):
+            mock(*args, **kwargs)
+
+        subscriber_client.acknowledge = f
+        queue = asyncio.Queue()
+        acker_task = asyncio.ensure_future(
+            acker(
+                'fake_subscription',
+                queue,
+                subscriber_client,
+                0.1,
+                MagicMock()
+            )
+        )
+        await asyncio.sleep(0)
+        await queue.put('ack_id_1')
+        acker_task.cancel()
+        await asyncio.wait_for(queue.join(), 1.)
+        await asyncio.sleep(0.3)
+        mock.assert_called_with('fake_subscription', ack_ids=['ack_id_1'])
+        assert acker_task.done()
+
+
     # ========
     # nacker
     # ========
