@@ -79,24 +79,7 @@ else:
                     ack_window: float,
                     metrics_client: MetricsAgent) -> None:
 
-        ack_ids: List[str] = []
-
-        async def _ack_once() -> None:
-            nonlocal ack_ids
-
-            if not ack_ids:
-                ack_ids.append(await ack_queue.get())
-                ack_queue.task_done()
-
-            ack_ids += await _budgeted_queue_get(ack_queue, ack_window)
-
-            # acknowledge endpoint limit is 524288 bytes
-            # which is ~2744 ack_ids
-            if len(ack_ids) > 2500:
-                log.error(
-                    'acker is falling behind, dropping %d unacked messages',
-                    len(ack_ids) - 2500)
-                ack_ids = ack_ids[-2500:]
+        async def _ack_once(ack_ids: List[str]) -> List[str]:
             try:
                 await subscriber_client.acknowledge(subscription,
                                                     ack_ids=ack_ids)
@@ -123,22 +106,45 @@ else:
                 log.warning(
                     'Ack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.acker.batch.failed')
+                return ack_ids
             except asyncio.CancelledError:  # pylint: disable=try-except-raise
                 raise
             except Exception as e:
                 log.warning(
                     'Ack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.acker.batch.failed')
+                return ack_ids
             else:
                 metrics_client.histogram('pubsub.acker.batch', len(ack_ids))
-                ack_ids = []
+                return []
+
+        async def _batch_ack_ids(ack_ids: List[str]) -> List[str]:
+            if not ack_ids:
+                ack_ids.append(await ack_queue.get())
+                ack_queue.task_done()
+
+            ack_ids += await _budgeted_queue_get(ack_queue, ack_window)
+
+            # acknowledge endpoint limit is 524288 bytes
+            # which is ~2744 ack_ids
+            if len(ack_ids) > 2500:
+                log.error(
+                    'acker is falling behind, dropping %d unacked messages',
+                    len(ack_ids) - 2500)
+                ack_ids = ack_ids[-2500:]
+
+            return ack_ids
+
+        ack_ids: List[str] = []
 
         while True:
             try:
-                await _ack_once()
+                ack_ids = await _batch_ack_ids(ack_ids)
+                ack_ids = await _ack_once(ack_ids)
             except asyncio.CancelledError:
                 while ack_ids or ack_queue.qsize():
-                    await _ack_once()
+                    ack_ids = await _batch_ack_ids(ack_ids)
+                    ack_ids = await _ack_once(ack_ids)
                 break
 
     async def nacker(subscription: str,
@@ -147,24 +153,7 @@ else:
                      nack_window: float,
                      metrics_client: MetricsAgent) -> None:
 
-        ack_ids: List[str] = []
-
-        async def _nack_once() -> None:
-            nonlocal ack_ids
-
-            if not ack_ids:
-                ack_ids.append(await nack_queue.get())
-                nack_queue.task_done()
-
-            ack_ids += await _budgeted_queue_get(nack_queue, nack_window)
-
-            # modifyAckDeadline endpoint limit is 524288 bytes
-            # which is ~2744 ack_ids
-            if len(ack_ids) > 2500:
-                log.error(
-                    'nacker is falling behind, dropping %d unacked messages',
-                    len(ack_ids) - 2500)
-                ack_ids = ack_ids[-2500:]
+        async def _nack_once(ack_ids: List[str]) -> List[str]:
             try:
                 await subscriber_client.modify_ack_deadline(
                     subscription,
@@ -186,6 +175,7 @@ else:
                             log.warning('Nack failed for ack_id=%s',
                                         ack_id,
                                         exc_info=e)
+
                     for ack_id in ack_ids:
                         asyncio.ensure_future(maybe_nack(ack_id))
                     ack_ids = []
@@ -193,22 +183,45 @@ else:
                 log.warning(
                     'Nack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.nacker.batch.failed')
+                return ack_ids
             except asyncio.CancelledError:  # pylint: disable=try-except-raise
                 raise
             except Exception as e:
                 log.warning(
                     'Nack request failed, better luck next batch', exc_info=e)
                 metrics_client.increment('pubsub.nacker.batch.failed')
+                return ack_ids
             else:
                 metrics_client.histogram('pubsub.nacker.batch', len(ack_ids))
-                ack_ids = []
+                return []
+
+        async def _batch_ack_ids(ack_ids: List[str]) -> List[str]:
+            if not ack_ids:
+                ack_ids.append(await nack_queue.get())
+                nack_queue.task_done()
+
+            ack_ids += await _budgeted_queue_get(nack_queue, nack_window)
+
+            # modifyAckDeadline endpoint limit is 524288 bytes
+            # which is ~2744 ack_ids
+            if len(ack_ids) > 2500:
+                log.error(
+                    'nacker is falling behind, dropping %d unacked messages',
+                    len(ack_ids) - 2500)
+                ack_ids = ack_ids[-2500:]
+
+            return ack_ids
+
+        ack_ids: List[str] = []
 
         while True:
             try:
-                await _nack_once()
+                ack_ids = await _batch_ack_ids(ack_ids)
+                ack_ids = await _nack_once(ack_ids)
             except asyncio.CancelledError:
                 while ack_ids or nack_queue.qsize():
-                    await _nack_once()
+                    ack_ids = await _batch_ack_ids(ack_ids)
+                    ack_ids = await _nack_once(ack_ids)
                 break
 
     async def _execute_callback(message: SubscriberMessage,
