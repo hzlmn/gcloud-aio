@@ -276,9 +276,6 @@ else:
             for _ in range(max_tasks):
                 await semaphore.acquire()
 
-            await ack_queue.join()
-            if nack_queue:
-                await nack_queue.join()
             log.info('Consumer terminated gracefully.')
             raise
 
