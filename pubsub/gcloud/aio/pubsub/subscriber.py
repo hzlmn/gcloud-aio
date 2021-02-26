@@ -83,6 +83,8 @@ else:
             try:
                 await subscriber_client.acknowledge(subscription,
                                                     ack_ids=ack_ids)
+                log.info('acknowledged %d ack ids',
+                         len(ack_ids), extra={'ack_ids': ack_ids})
             except aiohttp.client_exceptions.ClientResponseError as e:
                 if e.status == 400:
                     log.error(
@@ -143,7 +145,10 @@ else:
                 ack_ids = await _ack_once(ack_ids)
             except asyncio.CancelledError:
                 log.info('Acker worker cancelled. Gracefully terminating...')
+                log.info('len(ack_ids)=%d, ack_queue.qsize=%d',
+                         len(ack_ids), ack_queue.qsize())
                 while ack_ids or ack_queue.qsize():
+                    log.info('attempting to flush ack ids')
                     ack_ids = await _batch_ack_ids(ack_ids)
                     ack_ids = await _ack_once(ack_ids)
                 log.info('Acker terminated gracefully.')
@@ -238,6 +243,7 @@ else:
             start = time.perf_counter()
             await callback(message)
             await ack_queue.put(message.ack_id)
+            log.info('message %s placed on ack queue', message.message_id)
             metrics_client.increment('pubsub.consumer.succeeded')
             metrics_client.histogram('pubsub.consumer.latency.runtime',
                                      time.perf_counter() - start)
@@ -319,6 +325,10 @@ else:
 
                 metrics_client.histogram(
                     'pubsub.producer.batch', len(new_messages))
+                log.info('pulled batch size %d', len(new_messages))
+                for message in new_messages:
+                    log.info('pulled message=%s, delivery_attempt=%s',
+                             message.message_id, message.delivery_attempt)
 
                 pulled_at = time.perf_counter()
                 while new_messages:
