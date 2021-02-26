@@ -142,10 +142,12 @@ else:
                 ack_ids = await _batch_ack_ids(ack_ids)
                 ack_ids = await _ack_once(ack_ids)
             except asyncio.CancelledError:
+                log.info('Acker worker cancelled. Gracefully terminating...')
                 while ack_ids or ack_queue.qsize():
                     ack_ids = await _batch_ack_ids(ack_ids)
                     ack_ids = await _ack_once(ack_ids)
-                break
+                log.info('Acker terminated gracefully.')
+                raise
 
     async def nacker(subscription: str,
                      nack_queue: 'asyncio.Queue[str]',
@@ -219,10 +221,12 @@ else:
                 ack_ids = await _batch_ack_ids(ack_ids)
                 ack_ids = await _nack_once(ack_ids)
             except asyncio.CancelledError:
+                log.info('Nacker worker cancelled. Gracefully terminating...')
                 while ack_ids or nack_queue.qsize():
                     ack_ids = await _batch_ack_ids(ack_ids)
                     ack_ids = await _nack_once(ack_ids)
-                break
+                log.info('Nacker terminated gracefully.')
+                raise
 
     async def _execute_callback(message: SubscriberMessage,
                                 callback: ApplicationHandler,
