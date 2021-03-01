@@ -325,6 +325,7 @@ else:
             log.info('Producer worker cancelled. Gracefully terminating...')
 
             if not pull_task.done():
+                log.info('waiting for pull task to finish')
                 # Leaving the connection hanging can result in redelivered
                 # messages, so try to finish before shutting down
                 try:
