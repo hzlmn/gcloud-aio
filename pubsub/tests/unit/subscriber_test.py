@@ -564,10 +564,11 @@ else:
         )
         await queue.put('ack_id')
         await asyncio.sleep(0)
-        acker_task.cancel()
+        await asyncio.sleep(0)
         subscriber_client.acknowledge.assert_called_once_with(
             'fake_subscription', ack_ids=['ack_id'])
         assert queue.qsize() == 0
+        acker_task.cancel()
 
     @pytest.mark.asyncio
     async def test_acker_handles_exception(subscriber_client):
@@ -590,6 +591,7 @@ else:
             )
         )
         await queue.put('ack_id')
+        await asyncio.sleep(0)
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         mock.assert_called_once()

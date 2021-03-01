@@ -139,18 +139,25 @@ else:
 
         ack_ids: List[str] = []
 
+        async def _batch_and_ack(ack_ids: List[str]) -> List[str]:
+            ack_ids = await _batch_ack_ids(ack_ids)
+            ack_ids = await _ack_once(ack_ids)
+            return ack_ids
+
         while True:
             try:
-                ack_ids = await _batch_ack_ids(ack_ids)
-                ack_ids = await _ack_once(ack_ids)
+                batch_and_ack_task = asyncio.ensure_future(
+                    _batch_and_ack(ack_ids))
+                ack_ids = await asyncio.shield(batch_and_ack_task)
             except asyncio.CancelledError:
                 log.info('Acker worker cancelled. Gracefully terminating...')
                 log.info('len(ack_ids)=%d, ack_queue.qsize=%d',
                          len(ack_ids), ack_queue.qsize())
+                if not batch_and_ack_task.done():
+                    ack_ids = await batch_and_ack_task
                 while ack_ids or ack_queue.qsize():
                     log.info('attempting to flush ack ids')
-                    ack_ids = await _batch_ack_ids(ack_ids)
-                    ack_ids = await _ack_once(ack_ids)
+                    ack_ids = await _batch_and_ack(ack_ids)
                 log.info('Acker terminated gracefully.')
                 raise
 
