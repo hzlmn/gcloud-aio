@@ -348,10 +348,15 @@ else:
             if not pull_task.done():
                 # Leaving the connection hanging can result in redelivered
                 # messages, so try to finish before shutting down
+                log.info('Waiting 5 seconds for pull task to finish')
                 try:
                     new_messages += await asyncio.wait_for(pull_task, 5)
                 except (asyncio.TimeoutError, KeyError):
                     pass
+
+            for message in new_messages:
+                log.info('pulled message=%s, delivery_attempt=%s',
+                         message.message_id, message.delivery_attempt)
 
             pulled_at = time.perf_counter()
             for m in new_messages:
