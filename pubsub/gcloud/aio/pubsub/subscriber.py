@@ -97,6 +97,8 @@ else:
             try:
                 await subscriber_client.acknowledge(subscription,
                                                     ack_ids=ack_ids)
+                log.info('acknowledged %d ack ids',
+                         len(ack_ids), extra={'ack_ids': ack_ids})
                 for _ in ack_ids:
                     ack_queue.task_done()
             except aiohttp.client_exceptions.ClientResponseError as e:
@@ -217,6 +219,7 @@ else:
             start = time.perf_counter()
             await callback(message)
             await ack_queue.put(message.ack_id)
+            log.info('message %s placed on ack queue', message.message_id)
             metrics_client.increment('pubsub.consumer.succeeded')
             metrics_client.histogram('pubsub.consumer.latency.runtime',
                                      time.perf_counter() - start)
@@ -272,7 +275,9 @@ else:
             for _ in range(max_tasks):
                 await semaphore.acquire()
 
+            log.info('joining ack queue')
             await ack_queue.join()
+            log.info('finished joining ack queue')
             if nack_queue:
                 await nack_queue.join()
             log.info('Consumer terminated gracefully.')
@@ -302,6 +307,11 @@ else:
                 metrics_client.histogram(
                     'pubsub.producer.batch', len(new_messages))
 
+                log.info('pulled batch size %d', len(new_messages))
+                for message in new_messages:
+                    log.info('pulled message=%s, delivery_attempt=%s',
+                             message.message_id, message.delivery_attempt)
+
                 pulled_at = time.perf_counter()
                 while new_messages:
                     await message_queue.put((new_messages[-1], pulled_at))
@@ -311,6 +321,12 @@ else:
         except asyncio.CancelledError:
             log.info('Producer worker cancelled. Gracefully terminating...')
             pulled_at = time.perf_counter()
+
+            log.info('cancelling with last batch size %d', len(new_messages))
+            for message in new_messages:
+                log.info('pulled message=%s, delivery_attempt=%s',
+                         message.message_id, message.delivery_attempt)
+
             for m in new_messages:
                 await message_queue.put((m, pulled_at))
 
